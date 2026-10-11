@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>New Tab</title>
+    <link rel="stylesheet" href="start.css" />
+  </head>
+  <body>
+    <div class="nebula nebula-a"></div>
+    <div class="nebula nebula-b"></div>
+
+    <div class="hero">
+      <svg class="logo-mark" width="64" height="64" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#2B1A63" /><stop offset=".55" stop-color="#1A1238" /><stop offset="1" stop-color="#0F0B22" />
+          </linearGradient>
+          <linearGradient id="logoTrail" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#FFD27A" /><stop offset=".45" stop-color="#FF7A59" /><stop offset="1" stop-color="#FF4FA0" />
+          </linearGradient>
+          <radialGradient id="logoOrb" cx=".35" cy=".35" r=".7">
+            <stop offset="0" stop-color="#fff" /><stop offset=".4" stop-color="#FFF1C2" /><stop offset="1" stop-color="#FFC24D" />
+          </radialGradient>
+          <linearGradient id="logoSheen" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff" stop-opacity=".16" /><stop offset="1" stop-color="#fff" stop-opacity="0" />
+          </linearGradient>
+          <filter id="logoBlur1" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="25" /></filter>
+          <filter id="logoBlur2" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="8" /></filter>
+          <filter id="logoGlow" x="-.5" y="-.5" width="2" height="2"><feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#FF4FA0" flood-opacity=".5" /></filter>
+          <clipPath id="logoClip"><rect width="256" height="256" rx="68" /></clipPath>
+        </defs>
+        <g clip-path="url(#logoClip)">
+          <rect width="256" height="256" fill="url(#logoBg)" />
+          <circle cx="40" cy="210" r="100" fill="#7C5CFF" opacity=".75" filter="url(#logoBlur1)" />
+          <circle cx="210" cy="40" r="90" fill="#FF4FA0" opacity=".55" filter="url(#logoBlur1)" />
+          <path d="M175.5 92.15A62 62 0 1 0 190 132H136" fill="none" stroke="url(#logoTrail)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" filter="url(#logoGlow)" />
+          <circle cx="175.5" cy="92" r="34" fill="#FFD27A" opacity=".8" filter="url(#logoBlur2)" />
+          <circle cx="175.5" cy="92" r="18" fill="url(#logoOrb)" />
+          <ellipse cx="171.5" cy="84.5" rx="5" ry="3.5" fill="#fff" opacity=".95" transform="rotate(20 171.5 84.5)" />
+          <rect width="256" height="128" fill="url(#logoSheen)" />
+        </g>
+        <rect x="1" y="1" width="254" height="254" rx="67" fill="none" stroke="#fff" stroke-opacity=".14" stroke-width="2" />
+      </svg>
+      <h1 class="wordmark">Gushu</h1>
+      <p class="tagline">curiosity, in motion</p>
+      <form id="search-form" class="search-form" autocomplete="off">
+        <input id="search-input" type="text" placeholder="Search the web, or enter an address" autofocus spellcheck="false" />
+      </form>
+    </div>
+
+    <div class="sections">
+      <section class="section-block" id="favorites-section">
+        <h2 class="section-heading">Favorites</h2>
+        <div class="favorites" id="favorites"></div>
+      </section>
+
+      <section class="section-block">
+        <h2 class="section-heading">Privacy Report</h2>
+        <div class="privacy-card">
+          <div class="privacy-top-row">
+            <div class="privacy-shield">&#128737;</div>
+            <p class="privacy-headline">Gushu prevents trackers from profiling you.</p>
+            <div class="privacy-stats">
+              <div class="privacy-stat">
+                <div class="privacy-stat-label">Trackers blocked</div>
+                <div class="privacy-stat-value" id="privacy-total">0</div>
+              </div>
+              <div class="privacy-stat">
+                <div class="privacy-stat-label">Networks blocked</div>
+                <div class="privacy-stat-value" id="privacy-networks">0</div>
+              </div>
+            </div>
+          </div>
+          <div class="privacy-top" id="privacy-top"></div>
+          <a class="privacy-more" id="privacy-more">Show More</a>
+        </div>
+      </section>
+    </div>
+
+    <script src="nav-utils.js"></script>
+    <script src="start.js"></script>
+  </body>
+</html>

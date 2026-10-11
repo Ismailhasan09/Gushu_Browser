@@ -1,0 +1,13 @@
+{
+  "name": "my-browser",
+  "version": "0.1.0",
+  "description": "Custom browser UI on top of Chromium (Electron)",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

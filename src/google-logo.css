@@ -1,0 +1,25 @@
+/* Swaps Google's logo for the Gushu mark. Only ever injected on
+   google.com/www.google.com (see main.js) — #logo and alt="Google" are
+   generic enough that other sites use them for their own branding too,
+   so this must never be applied globally. Purely a local visual reskin,
+   like a userscript; changes nothing about what Google serves. */
+
+img[alt="Google"] {
+  content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232B1A63'/%3E%3Cstop offset='.55' stop-color='%231A1238'/%3E%3Cstop offset='1' stop-color='%230F0B22'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23FFD27A'/%3E%3Cstop offset='.45' stop-color='%23FF7A59'/%3E%3Cstop offset='1' stop-color='%23FF4FA0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='256' height='256' rx='68' fill='url(%23b)'/%3E%3Cpath d='M175.5 92.15A62 62 0 1 0 190 132H136' fill='none' stroke='url(%23t)' stroke-width='30' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='175.5' cy='92' r='18' fill='%23FFD27A'/%3E%3C/svg%3E");
+  object-fit: contain;
+}
+
+/* The search-results page specifically renders the logo as an inline
+   <svg> (not an <img>), inside <a id="logo">. Can't swap an inline SVG's
+   own path with CSS, so instead: hide it (keeps its layout box, so
+   nothing shifts) and paint the Gushu mark as a background image on its
+   container instead. */
+#logo svg {
+  visibility: hidden;
+}
+#logo {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cdefs%3E%3ClinearGradient id='b2' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232B1A63'/%3E%3Cstop offset='.55' stop-color='%231A1238'/%3E%3Cstop offset='1' stop-color='%230F0B22'/%3E%3C/linearGradient%3E%3ClinearGradient id='t2' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23FFD27A'/%3E%3Cstop offset='.45' stop-color='%23FF7A59'/%3E%3Cstop offset='1' stop-color='%23FF4FA0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='256' height='256' rx='68' fill='url(%23b2)'/%3E%3Cpath d='M175.5 92.15A62 62 0 1 0 190 132H136' fill='none' stroke='url(%23t2)' stroke-width='30' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='175.5' cy='92' r='18' fill='%23FFD27A'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: left center;
+}

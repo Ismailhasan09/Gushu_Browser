@@ -1,0 +1,46 @@
+/* Gushu Browser palette & type, adapted from the design brief at
+   ~/Downloads/gushu-browser-design.html (Night/dark variant — this app is
+   dark throughout). Used by every stylesheet (styles.css, start.css,
+   internal.css, page-overlay.css), so changing values here re-themes the
+   whole app. The old --space- and --nebula- prefixed names are kept as
+   aliases so nothing else had to be rewritten. */
+
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+:root {
+  /* Gushu's own tokens */
+  --page: #0f0b1f;
+  --panel: #17122b;
+  --line: rgba(255, 255, 255, 0.1);
+  --ink: #f3eefb;
+  --muted: #a79fbf;
+  --sun: #ffc56b;
+  --ember: #ff7a59;
+  --bloom: #ff4fa0;
+  --iris: #7c5cff;
+  --mint: #2bc48a;
+  --mint-ink: #14895e;
+  --comet: linear-gradient(135deg, #ffc56b 0%, #ff7a59 45%, #ff4fa0 100%);
+
+  --font-display: "Outfit", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Aliases for the rest of the app */
+  --space-bg-0: var(--page);
+  --space-bg-1: #130f24;
+  --space-bg-2: #1b1340;
+
+  --nebula-purple: var(--iris);
+  --nebula-pink: var(--bloom);
+  --nebula-cyan: var(--sun);
+
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-bg-strong: rgba(255, 255, 255, 0.11);
+  --glass-border: var(--line);
+
+  --text-primary: var(--ink);
+  --text-dim: var(--muted);
+
+  --accent: var(--iris);
+  --accent-glow: rgba(124, 92, 255, 0.5);
+}

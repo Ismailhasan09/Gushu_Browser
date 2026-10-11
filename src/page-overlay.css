@@ -1,0 +1,64 @@
+/* Injected into every visited site (on top of Chromium's native force-dark
+   rendering) to tie the page back into the Gushu theme: a soft corner
+   glow and a comet-gradient bar across the top, plus an Iris accent on
+   native form controls. Fixed positioning, no pointer-events, and a very
+   high z-index keep it purely decorative — it never intercepts clicks or
+   shifts page layout.
+
+   A blend-mode overlay has no idea what's beneath it — it paints over
+   videos and images exactly like everything else. Rather than trying to
+   detect every video/image/embed on every site (impossible to do
+   reliably), the overlay is masked to a radial vignette: fully visible at
+   the edges, fully transparent through the center ~70% of the viewport,
+   which is where real content (players, photos, feed posts) actually
+   lives. */
+
+:root {
+  accent-color: #7c5cff;
+}
+
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  -webkit-mask-image: radial-gradient(ellipse 85% 82% at 50% 50%, transparent 68%, black 99%);
+  mask-image: radial-gradient(ellipse 85% 82% at 50% 50%, transparent 68%, black 99%);
+  background-image: radial-gradient(ellipse 65% 55% at 0% 0%, rgba(124, 92, 255, 0.32), transparent 60%),
+    radial-gradient(ellipse 65% 55% at 100% 100%, rgba(255, 79, 160, 0.28), transparent 60%);
+}
+
+html::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 2147483647;
+  pointer-events: none;
+  background: linear-gradient(90deg, #7c5cff, #ffc56b, #ff7a59, #ff4fa0, #ffc56b, #7c5cff);
+  box-shadow: 0 0 14px 1px rgba(255, 122, 89, 0.55);
+  /* Only the outer ~15% at each edge shows — fully clear across the
+     middle, so it never draws a line across the top of a video/page
+     header that starts flush with the top of the viewport. */
+  -webkit-mask-image: linear-gradient(90deg, black 0%, black 15%, transparent 32%, transparent 68%, black 85%, black 100%);
+  mask-image: linear-gradient(90deg, black 0%, black 15%, transparent 32%, transparent 68%, black 85%, black 100%);
+}
+
+/* Both overlays use the maximum possible z-index so they show over any
+   normal page content — which means they'd also sit on top of a
+   fullscreen video (e.g. YouTube) unless explicitly hidden here.
+   :fullscreen matches the element itself if it went fullscreen;
+   :has(:fullscreen) matches html when some descendant (the usual case,
+   e.g. a <video>) did. */
+html:fullscreen::before,
+html:fullscreen::after,
+html:has(:fullscreen)::before,
+html:has(:fullscreen)::after {
+  display: none;
+}

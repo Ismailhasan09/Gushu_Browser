@@ -1,0 +1,533 @@
+const { app, BrowserWindow, Menu, ipcMain, session, shell, net } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { readJSON, writeJSON } = require('./store');
+const CURATED_AD_DOMAINS = require('./adblock-list');
+const { loadBlocklist } = require('./blocklist');
+
+const pageOverlayCSS = fs.readFileSync(path.join(__dirname, 'page-overlay.css'), 'utf8');
+const googleLogoCSS = fs.readFileSync(path.join(__dirname, 'google-logo.css'), 'utf8');
+
+// Chromium's native dark-mode renderer (same tech behind Chrome's own
+// "Auto dark mode for web contents" flag): it intelligently flips each
+// site's backgrounds/text while leaving photos/images alone, so every
+// page reads dark instead of clashing with the space-themed chrome.
+// Must be set before app is ready.
+app.commandLine.appendSwitch('force-dark-mode');
+app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark');
+
+const userDataDir = app.getPath('userData');
+const HISTORY_LIMIT = 2000;
+
+// ---------- profiles ----------
+// Each profile is a fully separate identity: its own history, bookmarks,
+// downloads, ad-block setting, and (via a dedicated session partition)
+// its own cookies/cache. "default" reuses the plain top-level files this
+// app already had before profiles existed, so nothing already on disk
+// moves or breaks; every other profile gets its own subfolder.
+
+const profilesIndexPath = path.join(userDataDir, 'profiles.json');
+let profiles = readJSON(profilesIndexPath, []);
+if (profiles.length === 0) {
+  profiles = [{ id: 'default', name: 'Default', color: '#22d3ee', createdAt: Date.now() }];
+  writeJSON(profilesIndexPath, profiles);
+}
+
+function profileDir(id) {
+  if (id === 'default') return userDataDir;
+  const dir = path.join(userDataDir, 'profiles', id);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+const profileStores = new Map();
+function storeFor(profileId) {
+  const id = profiles.some((p) => p.id === profileId) ? profileId : 'default';
+  if (profileStores.has(id)) return profileStores.get(id);
+
+  const dir = profileDir(id);
+  const files = {
+    settings: path.join(dir, 'settings.json'),
+    history: path.join(dir, 'history.json'),
+    bookmarks: path.join(dir, 'bookmarks.json'),
+    downloads: path.join(dir, 'downloads.json'),
+  };
+  const store = {
+    settings: readJSON(files.settings, { adBlockEnabled: true }),
+    history: readJSON(files.history, []),
+    bookmarks: readJSON(files.bookmarks, []),
+    downloads: readJSON(files.downloads, []),
+    blockedCount: 0,
+    blockedByDomain: {},
+    saveSettings() {
+      writeJSON(files.settings, store.settings);
+    },
+    saveHistory() {
+      writeJSON(files.history, store.history);
+    },
+    saveBookmarks() {
+      writeJSON(files.bookmarks, store.bookmarks);
+    },
+    saveDownloads() {
+      writeJSON(files.downloads, store.downloads);
+    },
+  };
+  profileStores.set(id, store);
+  return store;
+}
+
+function sessionForProfile(profileId) {
+  return profileId === 'default' ? session.defaultSession : session.fromPartition(`persist:profile-${profileId}`);
+}
+
+// ---------- ad blocking ----------
+
+// Starts with the small hand-curated list so blocking works immediately
+// at launch, then gets the ~70k-domain fetched blocklist merged in once
+// it loads (see loadBlocklist() call near the bottom of this file).
+const blockedHosts = new Set(CURATED_AD_DOMAINS);
+
+// Walks up the domain hierarchy (ads.sub.example.com -> sub.example.com ->
+// example.com) checking each level against the Set, so a single lookup is
+// O(hostname depth) rather than O(list size) — matters once the list has
+// tens of thousands of entries.
+function matchAdDomain(urlStr) {
+  let hostname;
+  try {
+    hostname = new URL(urlStr).hostname;
+  } catch {
+    return null;
+  }
+  let h = hostname;
+  while (h) {
+    if (blockedHosts.has(h)) return h;
+    const dot = h.indexOf('.');
+    if (dot === -1) return null;
+    h = h.slice(dot + 1);
+  }
+  return null;
+}
+
+// webRequest.onBeforeRequest replaces any previous listener on a session
+// rather than stacking, and session.on('will-download') is a real
+// multi-listener EventEmitter — both get a WeakSet guard so re-running
+// setup on an already-handled session is a safe no-op instead of either
+// silently replacing logic or double-counting downloads.
+const adBlockSessions = new WeakSet();
+function registerAdBlock(ses, profileId) {
+  if (adBlockSessions.has(ses)) return;
+  adBlockSessions.add(ses);
+  ses.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+    const store = storeFor(profileId);
+    const matched = store.settings.adBlockEnabled ? matchAdDomain(details.url) : null;
+    if (matched) {
+      store.blockedCount += 1;
+      store.blockedByDomain[matched] = (store.blockedByDomain[matched] || 0) + 1;
+      callback({ cancel: true });
+    } else {
+      callback({ cancel: false });
+    }
+  });
+}
+
+const downloadSessions = new WeakSet();
+function registerDownloads(ses, profileId) {
+  if (downloadSessions.has(ses)) return;
+  downloadSessions.add(ses);
+  ses.on('will-download', (_event, item) => {
+    const store = storeFor(profileId);
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      filename: item.getFilename(),
+      url: item.getURL(),
+      savePath: '',
+      state: 'progressing',
+      receivedBytes: 0,
+      totalBytes: item.getTotalBytes(),
+      startedAt: Date.now(),
+    };
+    store.downloads.unshift(entry);
+
+    item.on('updated', (_e, state) => {
+      entry.state = state;
+      entry.receivedBytes = item.getReceivedBytes();
+    });
+
+    item.once('done', (_e, state) => {
+      entry.state = state;
+      entry.savePath = item.getSavePath();
+      entry.completedAt = Date.now();
+      store.saveDownloads();
+    });
+  });
+}
+
+function setupProfileSession(profileId) {
+  const ses = sessionForProfile(profileId);
+  registerAdBlock(ses, profileId);
+  registerDownloads(ses, profileId);
+  return ses;
+}
+
+function createWindow({ private: isPrivate = false, profileId = 'default' } = {}) {
+  if (!isPrivate) setupProfileSession(profileId);
+
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 640,
+    minHeight: 420,
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#1e1e1e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: true,
+      sandbox: false,
+    },
+  });
+  win.profileId = profileId;
+
+  // Native macOS trackpad gesture (System Settings > Trackpad > More
+  // Gestures > "Swipe between pages" must be on — this is an OS-level
+  // setting we can't control from the app). Direction here is the
+  // gesture's own direction, not the navigation result, so the mapping
+  // is reversed: swiping right pulls the previous page in from the left.
+  win.on('swipe', (_event, direction) => {
+    if (direction === 'left') {
+      win.webContents.send('menu-action', 'go-forward');
+    } else if (direction === 'right') {
+      win.webContents.send('menu-action', 'go-back');
+    }
+  });
+
+  const query = { profile: profileId };
+  if (isPrivate) query.private = '1';
+  win.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query });
+  return win;
+}
+
+function sendMenuAction(action) {
+  return (_menuItem, window) => {
+    const win = window || BrowserWindow.getFocusedWindow();
+    win?.webContents.send('menu-action', action);
+  };
+}
+
+function buildMenu() {
+  const profileItems = profiles.map((p) => ({
+    label: `Open — ${p.name}`,
+    click: () => createWindow({ profileId: p.id }),
+  }));
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: sendMenuAction('settings') },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'File',
+      submenu: [
+        { label: 'New Tab', click: sendMenuAction('new-tab') },
+        { label: 'New Window', accelerator: 'CmdOrCtrl+N', click: (_item, win) => createWindow({ profileId: win?.profileId || 'default' }) },
+        { label: 'New Private Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow({ private: true }) },
+        { type: 'separator' },
+        { label: 'Close Tab', click: sendMenuAction('close-tab') },
+        { role: 'close' },
+      ],
+    },
+    {
+      label: 'Profiles',
+      submenu: [...profileItems, { type: 'separator' }, { label: 'Manage Profiles...', click: sendMenuAction('settings') }],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        { label: 'Find in Page', accelerator: 'CmdOrCtrl+F', click: sendMenuAction('find') },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: sendMenuAction('reload') },
+        { label: 'Force Reload', accelerator: 'CmdOrCtrl+Alt+R', click: sendMenuAction('force-reload') },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { label: 'Reader Mode', accelerator: 'CmdOrCtrl+Shift+R', click: sendMenuAction('reader-mode') },
+        { label: 'Enter Picture in Picture', click: sendMenuAction('pip') },
+        { type: 'separator' },
+        { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', click: sendMenuAction('zoom-in') },
+        { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: sendMenuAction('zoom-out') },
+        { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: sendMenuAction('zoom-reset') },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'History',
+      submenu: [
+        { label: 'Show History', click: sendMenuAction('history') },
+        { label: 'Delete Browsing Data...', accelerator: 'CmdOrCtrl+Shift+Backspace', click: sendMenuAction('delete-browsing-data') },
+      ],
+    },
+    {
+      label: 'Bookmarks',
+      submenu: [
+        { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: sendMenuAction('toggle-bookmark') },
+        { label: 'Show Bookmarks', click: sendMenuAction('bookmarks') },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { label: 'Downloads', accelerator: 'Alt+CmdOrCtrl+L', click: sendMenuAction('downloads') },
+        { label: 'Privacy Report', click: sendMenuAction('privacy') },
+        { label: 'Print...', accelerator: 'CmdOrCtrl+P', click: sendMenuAction('print') },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
+}
+
+buildMenu();
+
+ipcMain.handle('ad-block:get', (_e, profileId) => storeFor(profileId).settings.adBlockEnabled);
+ipcMain.handle('ad-block:set', (_e, profileId, value) => {
+  const store = storeFor(profileId);
+  store.settings.adBlockEnabled = Boolean(value);
+  store.saveSettings();
+  return store.settings.adBlockEnabled;
+});
+ipcMain.handle('ad-block:count', (_e, profileId) => storeFor(profileId).blockedCount);
+
+ipcMain.handle('privacy:report', (_e, profileId) => {
+  const store = storeFor(profileId);
+  const byDomain = Object.entries(store.blockedByDomain)
+    .map(([domain, count]) => ({ domain, count }))
+    .sort((a, b) => b.count - a.count);
+  return { total: store.blockedCount, byDomain };
+});
+
+ipcMain.handle('history:add', (_e, profileId, { url, title, favicon }) => {
+  const store = storeFor(profileId);
+  store.history.push({ url, title: title || url, favicon: favicon || null, visitedAt: Date.now() });
+  if (store.history.length > HISTORY_LIMIT) store.history = store.history.slice(store.history.length - HISTORY_LIMIT);
+  store.saveHistory();
+});
+ipcMain.handle('history:list', (_e, profileId) => [...storeFor(profileId).history].reverse());
+ipcMain.handle('history:clear', (_e, profileId) => {
+  const store = storeFor(profileId);
+  store.history = [];
+  store.saveHistory();
+});
+
+// Groups history by domain and ranks by visit count (ties broken by most
+// recent) — the classic "frequently visited" tile set most browsers show
+// on a fresh new-tab page before you've bookmarked anything.
+ipcMain.handle('history:top-sites', (_e, profileId, limit = 10) => {
+  const store = storeFor(profileId);
+  const byHost = new Map();
+
+  for (const entry of store.history) {
+    let host;
+    try {
+      host = new URL(entry.url).hostname.replace(/^www\./, '');
+    } catch {
+      continue;
+    }
+    const existing = byHost.get(host);
+    if (existing) {
+      existing.count += 1;
+      if (entry.visitedAt > existing.visitedAt) {
+        existing.visitedAt = entry.visitedAt;
+        existing.url = entry.url;
+        existing.title = entry.title;
+        existing.favicon = entry.favicon || existing.favicon;
+      }
+    } else {
+      byHost.set(host, { host, url: entry.url, title: entry.title, favicon: entry.favicon || null, count: 1, visitedAt: entry.visitedAt });
+    }
+  }
+
+  return [...byHost.values()]
+    .sort((a, b) => b.count - a.count || b.visitedAt - a.visitedAt)
+    .slice(0, limit);
+});
+
+ipcMain.handle('bookmarks:toggle', (_e, profileId, { url, title, favicon }) => {
+  const store = storeFor(profileId);
+  const idx = store.bookmarks.findIndex((b) => b.url === url);
+  const nowBookmarked = idx === -1;
+  if (nowBookmarked) {
+    store.bookmarks.unshift({ url, title: title || url, favicon: favicon || null, createdAt: Date.now() });
+  } else {
+    store.bookmarks.splice(idx, 1);
+  }
+  store.saveBookmarks();
+  return nowBookmarked;
+});
+ipcMain.handle('bookmarks:is', (_e, profileId, url) => storeFor(profileId).bookmarks.some((b) => b.url === url));
+ipcMain.handle('bookmarks:list', (_e, profileId) => storeFor(profileId).bookmarks);
+ipcMain.handle('bookmarks:remove', (_e, profileId, url) => {
+  const store = storeFor(profileId);
+  store.bookmarks = store.bookmarks.filter((b) => b.url !== url);
+  store.saveBookmarks();
+});
+
+ipcMain.handle('downloads:list', (_e, profileId) => storeFor(profileId).downloads);
+ipcMain.handle('downloads:clear', (_e, profileId) => {
+  const store = storeFor(profileId);
+  store.downloads = [];
+  store.saveDownloads();
+});
+ipcMain.handle('downloads:open-folder', (_e, profileId, id) => {
+  const entry = storeFor(profileId).downloads.find((d) => d.id === id);
+  if (entry?.savePath) shell.showItemInFolder(entry.savePath);
+});
+
+ipcMain.handle('browsing-data:delete', async (_e, profileId) => {
+  const store = storeFor(profileId);
+  store.history = [];
+  store.saveHistory();
+  const ses = sessionForProfile(profileId);
+  await ses.clearStorageData();
+  await ses.clearCache();
+});
+
+ipcMain.handle('profiles:list', () => profiles);
+ipcMain.handle('profiles:create', (_e, { name, color }) => {
+  const id = `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const profile = { id, name: (name || 'New Profile').slice(0, 40), color: color || '#22d3ee', createdAt: Date.now() };
+  profiles.push(profile);
+  writeJSON(profilesIndexPath, profiles);
+  setupProfileSession(id);
+  buildMenu();
+  return profile;
+});
+ipcMain.handle('profiles:open', (_e, id) => {
+  createWindow({ profileId: id });
+});
+
+// Two-finger trackpad swipe, reported by webview-preload.js. event.sender
+// here is the webview's own webContents (the tab that was actually
+// swiped on), so it can navigate itself directly.
+ipcMain.on('gesture-navigate', (event, direction) => {
+  const wc = event.sender;
+  const nav = wc.navigationHistory || wc;
+  if (direction === 'back' && nav.canGoBack()) nav.goBack();
+  else if (direction === 'forward' && nav.canGoForward()) nav.goForward();
+});
+
+ipcMain.handle('suggest:local', (_e, profileId, query) => {
+  const store = storeFor(profileId);
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const matches = [];
+  const seen = new Set();
+
+  for (const b of store.bookmarks) {
+    if (matches.length >= 4) break;
+    if (seen.has(b.url)) continue;
+    if (b.title.toLowerCase().includes(q) || b.url.toLowerCase().includes(q)) {
+      matches.push({ type: 'bookmark', url: b.url, title: b.title, favicon: b.favicon });
+      seen.add(b.url);
+    }
+  }
+  for (let i = store.history.length - 1; i >= 0 && matches.length < 6; i--) {
+    const h = store.history[i];
+    if (seen.has(h.url)) continue;
+    if (h.title.toLowerCase().includes(q) || h.url.toLowerCase().includes(q)) {
+      matches.push({ type: 'history', url: h.url, title: h.title, favicon: h.favicon });
+      seen.add(h.url);
+    }
+  }
+  return matches;
+});
+
+ipcMain.handle('search:suggest', async (_e, query) => {
+  const q = query.trim();
+  if (!q) return [];
+  try {
+    const res = await net.fetch(`https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    return Array.isArray(data?.[1]) ? data[1].slice(0, 6) : [];
+  } catch (err) {
+    console.error('search:suggest failed:', err);
+    return [];
+  }
+});
+
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() !== 'webview') return;
+
+  // Strip the "Electron/x.y.z" token so sites see a plain Chrome UA
+  // instead of flagging this as a non-standard browser and serving a
+  // degraded page (this is what was breaking Google search results).
+  contents.setUserAgent(contents.getUserAgent().replace(/\s*Electron\/\S+/, ''));
+
+  // Profile-backed sessions are already registered by setupProfileSession()
+  // when their window was created, so these are no-ops there (guarded by
+  // the WeakSets above) — this line's real job is covering private
+  // windows' one-off ephemeral sessions, which aren't pre-registered
+  // anywhere else. Private tabs share the Default profile's ad-block
+  // setting as a baseline.
+  registerAdBlock(contents.session, 'default');
+  registerDownloads(contents.session, 'default');
+
+  // Layer the Gushu corner glow/accent bar over every visited site (see
+  // page-overlay.css for how this stays non-interactive).
+  contents.on('dom-ready', () => {
+    contents.insertCSS(pageOverlayCSS).catch(() => {});
+
+    // The Google-logo swap is injected separately, and only when the
+    // page actually is google.com — #logo and alt="Google" are generic
+    // enough that other sites use them for their own logo too.
+    let hostname = '';
+    try {
+      hostname = new URL(contents.getURL()).hostname;
+    } catch {
+      /* non-http pages (e.g. file://, about:blank) — leave hostname empty */
+    }
+    if (hostname === 'google.com' || hostname === 'www.google.com') {
+      contents.insertCSS(googleLogoCSS).catch(() => {});
+    }
+  });
+});
+
+app.whenReady().then(() => {
+  createWindow();
+
+  // Fetches/refreshes the full blocklist in the background — the curated
+  // list already active above keeps blocking working immediately, this
+  // just makes it thorough once it lands (usually a couple seconds).
+  const blocklistCachePath = path.join(userDataDir, 'blocklist-cache.txt');
+  loadBlocklist(blocklistCachePath)
+    .then((domains) => {
+      for (const d of domains) blockedHosts.add(d);
+      console.log(`Ad blocklist ready: ${blockedHosts.size} domains.`);
+    })
+    .catch((err) => console.error('Blocklist load failed:', err));
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});

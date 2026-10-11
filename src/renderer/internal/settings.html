@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Settings</title>
+    <link rel="stylesheet" href="internal.css" />
+  </head>
+  <body>
+    <div class="page">
+      <h1>Settings</h1>
+      <p class="subtitle">Gushu preferences. These are saved on this machine only.</p>
+
+      <div class="section">
+        <p class="section-label">Privacy</p>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Block ads</div>
+            <div class="setting-desc" id="adblock-desc">Blocks known ad/tracker domains on every site, in every tab.</div>
+          </div>
+          <div class="switch" id="adblock-switch"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-label">Browsing data</p>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Delete browsing data</div>
+            <div class="setting-desc">Clears history, cookies, and cached files. Bookmarks and downloads are kept.</div>
+          </div>
+          <button class="btn danger" id="delete-data-btn">Delete</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-label">Profiles</p>
+        <p class="subtitle" style="margin-bottom: 14px">
+          Each profile is a fully separate identity &mdash; its own history, bookmarks, cookies, and logins. Like Private
+          windows, but persistent and named.
+        </p>
+        <div class="list" id="profiles-list"></div>
+        <div class="toolbar-row" style="margin-top: 14px">
+          <input id="new-profile-name" class="btn" style="flex: 1 1 auto; text-align: left; cursor: text" type="text" placeholder="New profile name" />
+          <button class="btn primary" id="new-profile-btn">Create profile</button>
+        </div>
+      </div>
+    </div>
+    <script src="settings.js"></script>
+  </body>
+</html>
