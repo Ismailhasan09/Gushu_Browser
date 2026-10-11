@@ -172,6 +172,12 @@ function createTab(url = HOME_URL, { activate = true } = {}) {
   });
 
   webview.addEventListener('new-window', (e) => {
+    // Popunder/popup ads work by hijacking clicks to fire window.open() —
+    // opening every "new window" request as a fresh tab was faithfully
+    // opening every one of those ads. While ad blocking is on, suppress
+    // them all; turning the shield off (the user's explicit "I want to
+    // allow this") restores normal target="_blank"/window.open() behavior.
+    if (adBlockEnabled) return;
     createTab(e.url);
   });
 

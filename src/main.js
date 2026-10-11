@@ -4,9 +4,16 @@ const fs = require('fs');
 const { readJSON, writeJSON } = require('./store');
 const CURATED_AD_DOMAINS = require('./adblock-list');
 const { loadBlocklist } = require('./blocklist');
+const { loadFilterLists } = require('./easylist');
 
 const pageOverlayCSS = fs.readFileSync(path.join(__dirname, 'page-overlay.css'), 'utf8');
 const googleLogoCSS = fs.readFileSync(path.join(__dirname, 'google-logo.css'), 'utf8');
+
+// Populated once EasyList/EasyPrivacy finish loading (see bottom of file).
+// Hides ad containers/overlays that are part of a page's own HTML rather
+// than a separate blockable network request — the fake-"browser window"
+// scam-ad category included.
+let cosmeticCSS = '';
 
 // Chromium's native dark-mode renderer (same tech behind Chrome's own
 // "Auto dark mode for web contents" flag): it intelligently flips each
@@ -494,6 +501,10 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('dom-ready', () => {
     contents.insertCSS(pageOverlayCSS).catch(() => {});
 
+    if (cosmeticCSS && storeFor('default').settings.adBlockEnabled) {
+      contents.insertCSS(cosmeticCSS).catch(() => {});
+    }
+
     // The Google-logo swap is injected separately, and only when the
     // page actually is google.com — #logo and alt="Google" are generic
     // enough that other sites use them for their own logo too.
@@ -522,6 +533,18 @@ app.whenReady().then(() => {
       console.log(`Ad blocklist ready: ${blockedHosts.size} domains.`);
     })
     .catch((err) => console.error('Blocklist load failed:', err));
+
+  // EasyList + EasyPrivacy: more network-block domains, plus the cosmetic
+  // selectors that hide ad containers baked directly into a page's HTML
+  // (not just a separate blockable request) — see easylist.js.
+  const filterListCachePaths = [path.join(userDataDir, 'easylist-cache.txt'), path.join(userDataDir, 'easyprivacy-cache.txt')];
+  loadFilterLists(filterListCachePaths)
+    .then(({ domains, selectors }) => {
+      for (const d of domains) blockedHosts.add(d);
+      cosmeticCSS = [...selectors].map((s) => `${s}{display:none!important}`).join('\n');
+      console.log(`Filter lists ready: ${blockedHosts.size} total domains, ${selectors.size} cosmetic rules.`);
+    })
+    .catch((err) => console.error('Filter list load failed:', err));
 });
 
 app.on('window-all-closed', () => {
