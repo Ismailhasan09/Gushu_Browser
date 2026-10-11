@@ -693,6 +693,14 @@ body.private .private-badge {
   height: 14px;
 }
 
+/* ---------- fullscreen video ---------- */
+
+body.video-fullscreen .tab-strip,
+body.video-fullscreen .toolbar,
+body.video-fullscreen .find-bar {
+  display: none;
+}
+
 /* ---------- page content ---------- */
 
 .webview-container {

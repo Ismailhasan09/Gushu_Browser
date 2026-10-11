@@ -496,6 +496,19 @@ app.on('web-contents-created', (_event, contents) => {
   registerAdBlock(contents.session, 'default');
   registerDownloads(contents.session, 'default');
 
+  // When a page puts a video into HTML fullscreen (the Fullscreen API),
+  // Electron does NOT automatically resize our window or hide our own
+  // chrome — the video just fills whatever space the webview already has
+  // below the toolbar. Take the window itself fullscreen to match; the
+  // renderer handles hiding the tab-strip/toolbar on the matching DOM
+  // event (see renderer.js).
+  contents.on('enter-html-full-screen', () => {
+    BrowserWindow.fromWebContents(contents.hostWebContents)?.setFullScreen(true);
+  });
+  contents.on('leave-html-full-screen', () => {
+    BrowserWindow.fromWebContents(contents.hostWebContents)?.setFullScreen(false);
+  });
+
   // Layer the Gushu corner glow/accent bar over every visited site (see
   // page-overlay.css for how this stays non-interactive).
   contents.on('dom-ready', () => {

@@ -181,6 +181,15 @@ function createTab(url = HOME_URL, { activate = true } = {}) {
     createTab(e.url);
   });
 
+  // Hides our own chrome so a fullscreened video actually gets the full
+  // window (main.js handles taking the native window itself fullscreen).
+  webview.addEventListener('enter-html-full-screen', () => {
+    document.body.classList.add('video-fullscreen');
+  });
+  webview.addEventListener('leave-html-full-screen', () => {
+    document.body.classList.remove('video-fullscreen');
+  });
+
   if (activate) switchTab(id);
   return id;
 }
