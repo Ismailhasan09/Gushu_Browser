@@ -5,7 +5,10 @@
   "description": "Custom browser UI on top of Chromium (Electron)",
   "main": "src/main.js",
   "private": true,
-  "author": "Ismail Hasan",
+  "author": {
+    "name": "Ismail Hasan",
+    "email": "Ismailhasan09@users.noreply.github.com"
+  },
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --mac --win --linux",
@@ -62,6 +65,7 @@
     },
     "linux": {
       "icon": "build/icon.png",
+      "desktopName": "gushu-browser.desktop",
       "target": [
         {
           "target": "AppImage",
