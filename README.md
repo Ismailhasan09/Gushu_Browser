@@ -15,6 +15,8 @@ A desktop web browser built with Electron (Chromium) and a fully custom interfac
 - **Address bar suggestions** — instant matches from your own History/Bookmarks, plus live search suggestions (skipped in Private windows)
 - **Fullscreen video** — takes over the whole window properly, chrome hidden
 - **Start page** — Favorites grid (your bookmarks + most-visited sites), Privacy Report summary
+- **VPN** — a toolbar toggle that routes your traffic through the Tor network, so sites and anyone watching the connection see Tor's exit point instead of your real IP/location. Free (no server to pay for — Tor is volunteer-run), no account. Requires Tor installed (`brew install tor` / `sudo apt install tor`); the button tells you if it's missing. First connect takes up to ~60-90s while Tor builds its relay cache; after that it's fast. WebRTC is also hardened against leaking your real IP while a proxy is active.
+- **Daily ad-skip report** — Settings → Privacy & Shield shows today's blocked-ad count live, plus a rough "what you'd have made watching them" estimate (clearly a guess, not real data). `scripts/daily-ad-report.js` can also open a pre-filled email draft with the same numbers.
 
 ## Installing (everyone else)
 

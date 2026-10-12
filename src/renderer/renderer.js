@@ -35,6 +35,8 @@ const historyBtn = document.getElementById('history-btn');
 const bookmarksBtn = document.getElementById('bookmarks-btn');
 const downloadsBtn = document.getElementById('downloads-btn');
 const privacyBtn = document.getElementById('privacy-btn');
+const vpnBtn = document.getElementById('vpn-btn');
+const vpnLabel = document.getElementById('vpn-label');
 const settingsBtn = document.getElementById('settings-btn');
 const profileBadge = document.getElementById('profile-badge');
 
@@ -787,5 +789,39 @@ setInterval(async () => {
   lastNetworkCount = report.byDomain.length;
   renderAdBlockState();
 }, 1500);
+
+// ---------- VPN (Tor) toggle ----------
+
+function renderVpnState(state) {
+  vpnBtn.classList.remove('on', 'connecting');
+  if (state === 'on') {
+    vpnBtn.classList.add('on');
+    vpnLabel.textContent = 'VPN On';
+  } else if (state === 'connecting') {
+    vpnBtn.classList.add('connecting');
+    vpnLabel.textContent = 'Connecting…';
+  } else {
+    vpnLabel.textContent = 'VPN';
+  }
+}
+
+vpnBtn.addEventListener('click', async () => {
+  const current = vpnBtn.classList.contains('on') ? 'on' : vpnBtn.classList.contains('connecting') ? 'connecting' : 'off';
+  if (current === 'connecting') return;
+  if (current === 'on') {
+    renderVpnState('connecting');
+    await window.browserAPI.disableVpn();
+    return;
+  }
+  renderVpnState('connecting');
+  const result = await window.browserAPI.enableVpn();
+  if (result?.error) {
+    renderVpnState('off');
+    alert(result.error);
+  }
+});
+
+window.browserAPI.onVpnStateChanged((state) => renderVpnState(state));
+window.browserAPI.getVpnState().then(renderVpnState);
 
 createTab(HOME_URL);

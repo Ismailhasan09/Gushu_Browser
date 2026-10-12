@@ -30,5 +30,10 @@ contextBridge.exposeInMainWorld('browserAPI', {
   setAskGushuKey: (key) => ipcRenderer.invoke('ask-gushu:set-key', PROFILE_ID, key),
   sendAskGushu: (payload) => ipcRenderer.invoke('ask-gushu:send', PROFILE_ID, payload),
 
+  getVpnState: () => ipcRenderer.invoke('vpn:get-state'),
+  enableVpn: () => ipcRenderer.invoke('vpn:enable'),
+  disableVpn: () => ipcRenderer.invoke('vpn:disable'),
+  onVpnStateChanged: (callback) => ipcRenderer.on('vpn-state-changed', (_event, state) => callback(state)),
+
   onMenuAction: (callback) => ipcRenderer.on('menu-action', (_event, action) => callback(action)),
 });

@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Menu, ipcMain, session, shell, net } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, shell, net, webContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { spawn, execFileSync } = require('child_process');
 const { readJSON, writeJSON } = require('./store');
 const CURATED_AD_DOMAINS = require('./adblock-list');
 
@@ -24,6 +25,11 @@ let cosmeticCSS = '';
 // Must be set before app is ready.
 app.commandLine.appendSwitch('force-dark-mode');
 app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark');
+
+// Without this, a page can use WebRTC to ask the OS for its real local/
+// public IP directly — bypassing the VPN/Tor proxy entirely, even while
+// it's active. This forces WebRTC to only ever see the proxied route.
+app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp');
 
 // The packaged app's name is "Gushu Browser" (see package.json
 // productName), which would otherwise move Electron's default userData
@@ -219,8 +225,156 @@ function setupProfileSession(profileId) {
   const ses = sessionForProfile(profileId);
   registerAdBlock(ses, profileId);
   registerDownloads(ses, profileId);
+  if (vpnState === 'on') applyVpnToSession(ses);
   return ses;
 }
+
+// ---------- VPN (Tor) ----------
+// Routes traffic through the Tor network instead of a VPN we'd have to
+// run ourselves: it's free forever (thousands of volunteer-run relays,
+// not a server we pay for), and it's specifically built for "nobody can
+// trace where this connection came from" — multiple relays hop the
+// traffic, so no single party sees both who you are and what you're
+// visiting. No account, no server to operate, no shared secret baked
+// into the app (each run picks its own anonymous circuit).
+
+const TOR_SOCKS_PORT = 9152;
+const torDataDir = path.join(userDataDir, 'tor-data');
+
+let torProcess = null;
+let vpnState = 'off'; // 'off' | 'connecting' | 'on'
+let resolvedTorPath = null;
+
+function resolveTorPath() {
+  if (resolvedTorPath) return resolvedTorPath;
+  const candidates = ['tor', '/opt/homebrew/bin/tor', '/usr/local/bin/tor', '/usr/bin/tor', '/usr/sbin/tor'];
+  for (const candidate of candidates) {
+    try {
+      execFileSync(candidate, ['--version'], { stdio: 'ignore' });
+      resolvedTorPath = candidate;
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function startTor() {
+  return new Promise((resolve, reject) => {
+    const torPath = resolveTorPath();
+    if (!torPath) {
+      reject(
+        new Error(
+          process.platform === 'darwin'
+            ? 'Tor isn’t installed. Install it with "brew install tor", then try again.'
+            : process.platform === 'linux'
+            ? 'Tor isn’t installed. Install it with "sudo apt install tor" (or your distro’s package manager), then try again.'
+            : 'Tor isn’t installed. Install the Tor Expert Bundle from torproject.org, then try again.'
+        )
+      );
+      return;
+    }
+
+    fs.mkdirSync(torDataDir, { recursive: true });
+    const proc = spawn(torPath, ['--SocksPort', String(TOR_SOCKS_PORT), '--DataDirectory', torDataDir, '--Log', 'notice stdout'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    torProcess = proc;
+
+    // The very first bootstrap (building the relay descriptor cache from
+    // scratch) can take 60-90s depending on the network; later ones reuse
+    // the cached torDataDir and are much faster, usually a few seconds.
+    const timeout = setTimeout(() => {
+      cleanup();
+      proc.kill();
+      reject(new Error('Tor took too long to connect. Check your network and try again.'));
+    }, 90000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      proc.stdout?.removeAllListeners('data');
+      proc.removeAllListeners('exit');
+    }
+
+    proc.stdout?.on('data', (chunk) => {
+      if (chunk.toString().includes('Bootstrapped 100%')) {
+        cleanup();
+        resolve();
+      }
+    });
+    proc.on('exit', (code) => {
+      cleanup();
+      torProcess = null;
+      reject(new Error(`Tor exited unexpectedly (code ${code}).`));
+    });
+    proc.on('error', (err) => {
+      cleanup();
+      torProcess = null;
+      reject(err);
+    });
+  });
+}
+
+function stopTor() {
+  if (torProcess) {
+    torProcess.kill();
+    torProcess = null;
+  }
+}
+
+async function applyVpnToSession(ses) {
+  if (vpnState === 'on') {
+    await ses.setProxy({ proxyRules: `socks5://127.0.0.1:${TOR_SOCKS_PORT}` });
+  } else {
+    await ses.setProxy({ mode: 'direct' });
+  }
+}
+
+async function applyVpnToAllSessions() {
+  await applyVpnToSession(session.defaultSession);
+  for (const p of profiles) {
+    await applyVpnToSession(sessionForProfile(p.id));
+  }
+  for (const wc of webContents.getAllWebContents()) {
+    if (wc.getType() === 'webview') await applyVpnToSession(wc.session);
+  }
+}
+
+function broadcastVpnState() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('vpn-state-changed', vpnState);
+  }
+}
+
+ipcMain.handle('vpn:get-state', () => vpnState);
+
+ipcMain.handle('vpn:enable', async () => {
+  if (vpnState === 'on') return { state: vpnState };
+  if (vpnState === 'connecting') return { state: vpnState };
+  vpnState = 'connecting';
+  broadcastVpnState();
+  try {
+    await startTor();
+    vpnState = 'on';
+    await applyVpnToAllSessions();
+    broadcastVpnState();
+    return { state: vpnState };
+  } catch (err) {
+    vpnState = 'off';
+    stopTor();
+    broadcastVpnState();
+    return { state: vpnState, error: err.message || 'Could not start the VPN.' };
+  }
+});
+
+ipcMain.handle('vpn:disable', async () => {
+  vpnState = 'off';
+  stopTor();
+  await applyVpnToAllSessions();
+  broadcastVpnState();
+  return { state: vpnState };
+});
 
 function createWindow({ private: isPrivate = false, profileId = 'default' } = {}) {
   if (!isPrivate) setupProfileSession(profileId);
@@ -662,6 +816,7 @@ app.on('web-contents-created', (_event, contents) => {
   // setting as a baseline.
   registerAdBlock(contents.session, 'default');
   registerDownloads(contents.session, 'default');
+  if (vpnState === 'on') applyVpnToSession(contents.session);
 
   // When a page puts a video into HTML fullscreen (the Fullscreen API),
   // Electron does NOT automatically resize our window or hide our own
@@ -736,6 +891,7 @@ app.on('window-all-closed', () => {
 // this file directly, with the app closed).
 app.on('before-quit', () => {
   for (const store of profileStores.values()) store.saveBlockedDaily();
+  stopTor();
 });
 
 app.on('activate', () => {

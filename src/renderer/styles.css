@@ -523,6 +523,60 @@ body.private .private-badge {
   height: 15px;
 }
 
+.vpn-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--tb-field);
+  color: var(--tb-ink-2);
+  font-weight: 600;
+  font-size: 12.5px;
+  flex: none;
+  cursor: pointer;
+}
+
+.vpn-btn:hover {
+  background: var(--tb-hover);
+  color: var(--tb-ink);
+}
+
+.vpn-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.vpn-btn.connecting {
+  color: var(--tb-ink);
+  background: var(--tb-field-hover);
+}
+
+.vpn-btn.connecting svg {
+  animation: vpn-pulse 1s ease-in-out infinite;
+}
+
+@keyframes vpn-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.vpn-btn.on {
+  background: var(--comet);
+  color: #1a1238;
+}
+
+.vpn-btn.on:hover {
+  filter: brightness(1.05);
+}
+
 /* ---------- shield popover ---------- */
 
 .pop {
