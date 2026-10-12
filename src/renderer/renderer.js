@@ -3,6 +3,7 @@ const PROFILE_ID = window.browserAPI.profileId;
 const IS_PRIVATE = new URLSearchParams(window.location.search).get('private') === '1';
 const PRIVATE_PARTITION = IS_PRIVATE ? `private-${Date.now()}-${Math.random().toString(36).slice(2)}` : null;
 if (IS_PRIVATE) document.body.classList.add('private');
+document.body.classList.add(window.browserAPI.platform === 'darwin' ? 'platform-mac' : 'platform-other');
 
 function withProfile(url) {
   const u = new URL(url);
@@ -171,13 +172,20 @@ function createTab(url = HOME_URL, { activate = true } = {}) {
     findCount.textContent = matches > 0 ? `${activeMatchOrdinal}/${matches}` : '0/0';
   });
 
-  webview.addEventListener('new-window', (e) => {
-    // Popunder/popup ads work by hijacking clicks to fire window.open() —
-    // opening every "new window" request as a fresh tab was faithfully
-    // opening every one of those ads. While ad blocking is on, suppress
-    // them all; turning the shield off (the user's explicit "I want to
-    // allow this") restores normal target="_blank"/window.open() behavior.
-    if (adBlockEnabled) return;
+  webview.addEventListener('new-window', async (e) => {
+    // Popunder/popup ads work by hijacking clicks to fire window.open() to
+    // an ad-network destination. Blocking every new-window request
+    // outright (what this used to do) also ate legitimate ones — a
+    // Cmd-click or right-click "open in new tab" on any normal link fires
+    // the exact same event, so Google Scholar and similar real links got
+    // silently swallowed too. Checking the actual destination against the
+    // same blocklist used for network requests fixes that: only requests
+    // headed to a known ad/tracker domain get suppressed.
+    const isInternalSource = webview.getURL().startsWith('file://') && webview.getURL().includes('/renderer/internal/');
+    if (!isInternalSource) {
+      const blocked = await window.browserAPI.isBlockedUrl(e.url);
+      if (blocked) return;
+    }
     createTab(e.url);
   });
 
@@ -223,6 +231,12 @@ function closeTab(id) {
   const ids = [...tabs.keys()];
   const idx = ids.indexOf(id);
   const groupId = tab.groupId;
+
+  // Track for "Recently closed" — skip private windows, and skip our own
+  // internal/new-tab pages (nothing useful to reopen there).
+  if (!IS_PRIVATE && /^https?:/i.test(tab.url)) {
+    window.browserAPI.notifyTabClosed({ url: tab.url, title: tab.title, favicon: tab.favicon });
+  }
 
   tab.tabEl.remove();
   tab.webview.remove();

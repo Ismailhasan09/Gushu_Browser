@@ -16,12 +16,19 @@ A desktop web browser built with Electron (Chromium) and a fully custom interfac
 - **Fullscreen video** — takes over the whole window properly, chrome hidden
 - **Start page** — Favorites grid (your bookmarks + most-visited sites), Privacy Report summary
 
-## Requirements
+## Installing (everyone else)
 
-- [Node.js](https://nodejs.org) (includes npm)
-- macOS (the window chrome — hidden title bar, traffic-light spacing, trackpad swipe — is currently macOS-specific; it will launch on Windows/Linux but that area of the UI won't look right there)
+No Node.js, no terminal, no build step. Grab the file for your OS from the [Releases page](https://github.com/Ismailhasan09/Gushu_Browser/releases) and run it:
 
-## Running it
+- **Windows** — `Gushu-Browser-Setup.exe` (installer) or the portable `.exe`
+- **macOS** — `.dmg`, then drag Gushu Browser into Applications
+- **Linux** — `.AppImage` (make it executable and run it) or `.deb`
+
+macOS note: since the app isn't notarized/signed by Apple, the first launch may be blocked by Gatekeeper. Right-click the app → Open, then confirm.
+
+## Running from source (developers)
+
+Requires [Node.js](https://nodejs.org) (includes npm).
 
 ```bash
 git clone https://github.com/Ismailhasan09/Gushu_Browser.git
@@ -31,6 +38,16 @@ npm start
 ```
 
 `npm install` pulls in Electron (not stored in the repo — it's large and fully reinstallable). After that, `npm start` launches the browser.
+
+### Building installers yourself
+
+```bash
+npm run dist:mac    # .dmg + .zip
+npm run dist:win    # .exe installer + portable .exe
+npm run dist:linux  # .AppImage + .deb
+```
+
+Output lands in `release/`. Pushing a tag like `v0.1.0` also triggers [GitHub Actions](.github/workflows/build.yml) to build all three platforms natively and attach them to a GitHub Release automatically.
 
 ## Project structure
 
@@ -53,4 +70,4 @@ src/
 
 ## Where your data lives
 
-Everything — history, bookmarks, settings, profiles, the cached blocklists — is stored locally in `~/Library/Application Support/my-browser/` (macOS). Nothing is sent anywhere except the page requests a normal browser makes, the periodic blocklist refresh (from easylist.to / the public hosts-list source), and live search suggestions (skipped entirely in Private windows).
+Everything — history, bookmarks, settings, profiles, the cached blocklists — is stored locally in `~/Library/Application Support/Gushu Browser/` (macOS; `%APPDATA%\Gushu Browser` on Windows, `~/.config/Gushu Browser` on Linux). Nothing is sent anywhere except the page requests a normal browser makes, the periodic blocklist refresh (from easylist.to / the public hosts-list source), and live search suggestions (skipped entirely in Private windows).

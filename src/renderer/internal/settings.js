@@ -12,16 +12,39 @@ adblockSwitch.addEventListener('click', async () => {
   renderAdBlock();
 });
 
-deleteDataBtn.addEventListener('click', async () => {
-  if (!confirm('Delete history, cookies, and cached files? This cannot be undone.')) return;
-  await window.internalAPI.deleteBrowsingData();
-  deleteDataBtn.textContent = 'Deleted';
-  setTimeout(() => {
-    deleteDataBtn.textContent = 'Delete';
-  }, 1500);
+// The actual Clear Data dialog (time range + what to clear) lives on the
+// History page, so there's only one implementation of it. This just
+// hands off there with a flag to auto-open it.
+deleteDataBtn.addEventListener('click', () => {
+  const url = new URL('history.html', document.baseURI);
+  url.search = location.search;
+  url.searchParams.set('clear', '1');
+  window.location.href = url.href;
 });
 
 renderAdBlock();
+
+// ---------- privacy stats ----------
+
+async function renderStats() {
+  const { total, byDomain } = await window.internalAPI.getPrivacyReport();
+  document.getElementById('stat-blocked').textContent = total;
+  document.getElementById('stat-networks').textContent = byDomain.length;
+}
+renderStats();
+setInterval(renderStats, 3000);
+
+// ---------- rail navigation ----------
+
+document.getElementById('snav').addEventListener('click', (e) => {
+  const btn = e.target.closest('.navi');
+  if (!btn) return;
+  const sec = btn.dataset.s;
+  document.querySelectorAll('[data-sec]').forEach((el) => {
+    el.hidden = el.dataset.sec !== sec;
+  });
+  document.querySelectorAll('#snav .navi').forEach((n) => n.classList.toggle('on', n === btn));
+});
 
 // ---------- profiles ----------
 

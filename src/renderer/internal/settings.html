@@ -6,44 +6,54 @@
     <link rel="stylesheet" href="internal.css" />
   </head>
   <body>
-    <div class="page">
-      <h1>Settings</h1>
-      <p class="subtitle">Gushu preferences. These are saved on this machine only.</p>
+    <div class="shell">
+      <nav class="rail" aria-label="Settings sections" id="snav">
+        <div class="rail-brand">Settings</div>
+        <button class="navi on" type="button" data-s="privacy">Privacy &amp; Shield</button>
+        <button class="navi" type="button" data-s="profiles">Profiles</button>
+        <div class="rail-foot">Gushu preferences are saved on this machine only.</div>
+      </nav>
+      <main class="content-area">
+        <section data-sec="privacy">
+          <div class="page-head"><div><h1>Privacy &amp; Shield</h1><p>Gushu blocks trackers and ads for you.</p></div></div>
 
-      <div class="section">
-        <p class="section-label">Privacy</p>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Block ads</div>
-            <div class="setting-desc" id="adblock-desc">Blocks known ad/tracker domains on every site, in every tab.</div>
+          <div class="stat-grid">
+            <div class="stat-tile"><div class="setting-desc">Trackers blocked</div><div class="stat-value" id="stat-blocked">0</div><div class="setting-desc">this session</div></div>
+            <div class="stat-tile"><div class="setting-desc">Networks seen</div><div class="stat-value" id="stat-networks">0</div><div class="setting-desc">distinct ad/tracker domains</div></div>
           </div>
-          <div class="switch" id="adblock-switch"></div>
-        </div>
-      </div>
 
-      <div class="section">
-        <p class="section-label">Browsing data</p>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Delete browsing data</div>
-            <div class="setting-desc">Clears history, cookies, and cached files. Bookmarks and downloads are kept.</div>
+          <div class="section">
+            <p class="section-label">Shield</p>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Block ads &amp; trackers</div>
+                <div class="setting-desc" id="adblock-desc">Blocks known ad/tracker domains on every site, in every tab.</div>
+              </div>
+              <div class="switch" id="adblock-switch"></div>
+            </div>
           </div>
-          <button class="btn danger" id="delete-data-btn">Delete</button>
-        </div>
-      </div>
 
-      <div class="section">
-        <p class="section-label">Profiles</p>
-        <p class="subtitle" style="margin-bottom: 14px">
-          Each profile is a fully separate identity &mdash; its own history, bookmarks, cookies, and logins. Like Private
-          windows, but persistent and named.
-        </p>
-        <div class="list" id="profiles-list"></div>
-        <div class="toolbar-row" style="margin-top: 14px">
-          <input id="new-profile-name" class="btn" style="flex: 1 1 auto; text-align: left; cursor: text" type="text" placeholder="New profile name" />
-          <button class="btn primary" id="new-profile-btn">Create profile</button>
-        </div>
-      </div>
+          <div class="section">
+            <p class="section-label">Browsing data</p>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Clear browsing data</div>
+                <div class="setting-desc">History, cookies, and cached files. Bookmarks and downloads are kept.</div>
+              </div>
+              <button class="btn danger" id="delete-data-btn">Clear&hellip;</button>
+            </div>
+          </div>
+        </section>
+
+        <section data-sec="profiles" hidden>
+          <div class="page-head"><div><h1>Profiles</h1><p>Each profile is a fully separate identity &mdash; its own history, bookmarks, cookies, and logins. Like Private windows, but persistent and named.</p></div></div>
+          <div class="list" id="profiles-list"></div>
+          <div class="toolbar-row" style="margin-top: 14px">
+            <input id="new-profile-name" class="btn" style="flex: 1 1 auto; text-align: left; cursor: text" type="text" placeholder="New profile name" />
+            <button class="btn primary" id="new-profile-btn">Create profile</button>
+          </div>
+        </section>
+      </main>
     </div>
     <script src="settings.js"></script>
   </body>

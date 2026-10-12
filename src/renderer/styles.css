@@ -21,6 +21,12 @@
   --tb-mint: #3ddc97;
 }
 
+/* Windows/Linux get a normal native title bar (see main.js), so there's
+   no traffic-light space to reserve. */
+body.platform-other {
+  --traffic-light-gutter: 10px;
+}
+
 * {
   box-sizing: border-box;
 }

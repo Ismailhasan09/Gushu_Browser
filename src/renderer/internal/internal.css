@@ -237,3 +237,358 @@ button {
   transform: translateX(18px);
   background: var(--accent);
 }
+
+/* ---------- rail shell (History, Settings) ---------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.rail {
+  padding: 22px 12px;
+  border-right: 1px solid var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 18px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.navi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 13px;
+  text-align: left;
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.navi:hover {
+  background: var(--glass-bg-strong);
+  color: var(--text-primary);
+}
+
+.navi.on {
+  background: var(--glass-bg-strong);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.rail-sep {
+  height: 1px;
+  background: var(--glass-border);
+  margin: 10px 8px;
+}
+
+.rail-foot {
+  margin-top: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--glass-bg);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.content-area {
+  padding: 28px 36px 60px;
+  min-width: 0;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.page-head h1 {
+  margin: 0;
+}
+
+.page-head p {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ---------- stat tiles ---------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-tile {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.stat-tile .stat-value {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+/* ---------- history, day-grouped ---------- */
+
+.day-group {
+  margin-bottom: 20px;
+}
+
+.day-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.day-head span:last-child {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+}
+
+.hist-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+
+.hist-item {
+  display: grid;
+  grid-template-columns: 58px 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 10px;
+}
+
+.hist-item:hover {
+  background: var(--glass-bg-strong);
+}
+
+.hist-item time {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-item .hist-acts {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+
+.hist-item:hover .hist-acts,
+.hist-item:focus-within .hist-acts {
+  opacity: 1;
+}
+
+.side-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.side-panel h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.closed-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px;
+  margin: 0 -6px;
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+
+.closed-item:hover {
+  background: var(--glass-bg-strong);
+}
+
+.closed-item span.closed-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.closed-item small {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* ---------- clear-data modal ---------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 6, 16, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.scrim[hidden] {
+  display: none;
+}
+
+.modal {
+  width: 100%;
+  max-width: 420px;
+  background: #211b37;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  padding: 22px;
+}
+
+.modal h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+
+.modal > p {
+  margin: 0 0 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.check-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-top: 1px solid var(--glass-border);
+  cursor: pointer;
+}
+
+.check-row input {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.check-row b {
+  display: block;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.check-row small {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* ---------- toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  background: #2a2342;
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  padding: 11px 15px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  z-index: 200;
+}
+
+.toast[hidden] {
+  display: none;
+}
+
+.toast button {
+  color: var(--accent);
+  font-weight: 700;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 820px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .rail {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--glass-border);
+    padding: 10px;
+  }
+  .rail-brand,
+  .rail-sep,
+  .rail-foot {
+    display: none;
+  }
+  .navi {
+    width: auto;
+    flex: none;
+  }
+  .content-area {
+    padding: 20px 16px 40px;
+  }
+  .hist-grid {
+    grid-template-columns: 1fr;
+  }
+}

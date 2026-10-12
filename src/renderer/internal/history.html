@@ -6,14 +6,64 @@
     <link rel="stylesheet" href="internal.css" />
   </head>
   <body>
-    <div class="page">
-      <h1>History</h1>
-      <p class="subtitle">Pages you've visited in this browser. Private windows never show up here.</p>
-      <div class="toolbar-row">
-        <button class="btn danger" id="clear-btn">Clear history</button>
-      </div>
-      <div class="list" id="list"></div>
+    <div class="shell">
+      <nav class="rail" aria-label="History sections">
+        <div class="rail-brand">History</div>
+        <button class="navi on" type="button">All history</button>
+        <div class="rail-sep"></div>
+        <button class="navi" type="button" id="open-clear">Clear browsing data</button>
+        <div class="rail-foot">History is kept until you clear it, or past the most recent 2,000 visits.</div>
+      </nav>
+      <main class="content-area">
+        <div class="page-head">
+          <div><h1>History</h1><p>Everything you visited, grouped by day. Only stored on this device.</p></div>
+          <button class="btn danger" type="button" id="open-clear-2">Clear browsing data</button>
+        </div>
+
+        <div class="toolbar-row">
+          <label class="search" style="flex:1 1 320px;display:flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:12px;background:var(--glass-bg);border:1px solid var(--glass-border)">
+            <span style="color:var(--text-dim)">&#128269;</span>
+            <input id="hq" type="search" placeholder="Search history" autocomplete="off" style="flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text-primary);font:500 13px var(--font-ui)" />
+          </label>
+        </div>
+
+        <div class="hist-grid">
+          <div id="hlist"></div>
+          <aside>
+            <div class="side-panel">
+              <h3>Recently closed</h3>
+              <div id="closed-list"></div>
+            </div>
+          </aside>
+        </div>
+      </main>
     </div>
+
+    <!-- Clear browsing data modal -->
+    <div class="scrim" id="clear-scrim" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clear-title">
+        <h3 id="clear-title">Clear browsing data</h3>
+        <p>Choose what to remove from this device.</p>
+        <div style="padding:0 0 14px">
+          <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:6px">Time range</label>
+          <select class="sel" id="range" style="width:100%;height:36px;border-radius:10px;background:var(--glass-bg);border:1px solid var(--glass-border);color:var(--text-primary);padding:0 10px">
+            <option value="hour">Last hour</option>
+            <option value="today" selected>Today</option>
+            <option value="week">Last 7 days</option>
+            <option value="all">All time</option>
+          </select>
+        </div>
+        <label class="check-row"><input type="checkbox" id="chk-history" checked /><div><b>Browsing history</b><small>Sites you visited</small></div></label>
+        <label class="check-row"><input type="checkbox" id="chk-cookies" checked /><div><b>Cookies and site data</b><small>Signs you out of most sites</small></div></label>
+        <label class="check-row"><input type="checkbox" id="chk-cache" /><div><b>Cached images and files</b><small>Some sites may load slower at first</small></div></label>
+        <div class="modal-foot">
+          <button class="btn" type="button" id="clear-cancel">Cancel</button>
+          <button class="btn danger" type="button" id="clear-go">Clear data</button>
+        </div>
+      </div>
+    </div>
+    <div class="toast" id="toast" hidden role="status"></div>
+
     <script src="history.js"></script>
   </body>
 </html>

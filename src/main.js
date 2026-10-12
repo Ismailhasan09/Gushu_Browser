@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const { readJSON, writeJSON } = require('./store');
 const CURATED_AD_DOMAINS = require('./adblock-list');
+
+const IS_MAC = process.platform === 'darwin';
 const { loadBlocklist } = require('./blocklist');
 const { loadFilterLists } = require('./easylist');
 
@@ -23,7 +25,17 @@ let cosmeticCSS = '';
 app.commandLine.appendSwitch('force-dark-mode');
 app.commandLine.appendSwitch('enable-features', 'WebContentsForceDark');
 
-const userDataDir = app.getPath('userData');
+// The packaged app's name is "Gushu Browser" (see package.json
+// productName), which would otherwise move Electron's default userData
+// folder away from the "my-browser" one this app used before packaging
+// existed. Pin the path explicitly and migrate any pre-existing data
+// over once, so nobody's history/bookmarks/profiles appear to vanish.
+const oldUserDataDir = path.join(app.getPath('appData'), 'my-browser');
+const userDataDir = path.join(app.getPath('appData'), 'Gushu Browser');
+if (!fs.existsSync(userDataDir) && fs.existsSync(oldUserDataDir)) {
+  fs.renameSync(oldUserDataDir, userDataDir);
+}
+app.setPath('userData', userDataDir);
 const HISTORY_LIMIT = 2000;
 
 // ---------- profiles ----------
@@ -60,12 +72,15 @@ function storeFor(profileId) {
     downloads: path.join(dir, 'downloads.json'),
   };
   const store = {
-    settings: readJSON(files.settings, { adBlockEnabled: true }),
+    settings: readJSON(files.settings, { adBlockEnabled: true, anthropicApiKey: '' }),
     history: readJSON(files.history, []),
     bookmarks: readJSON(files.bookmarks, []),
     downloads: readJSON(files.downloads, []),
     blockedCount: 0,
     blockedByDomain: {},
+    // Ephemeral, session-only — not written to disk, cleared on restart
+    // (same as real browsers' "recently closed tabs").
+    recentlyClosed: [],
     saveSettings() {
       writeJSON(files.settings, store.settings);
     },
@@ -114,6 +129,12 @@ function matchAdDomain(urlStr) {
   }
   return null;
 }
+
+ipcMain.handle('ad-block:is-blocked-url', (_e, profileId, url) => {
+  const store = storeFor(profileId);
+  if (!store.settings.adBlockEnabled) return false;
+  return !!matchAdDomain(url);
+});
 
 // webRequest.onBeforeRequest replaces any previous listener on a session
 // rather than stacking, and session.on('will-download') is a real
@@ -184,7 +205,11 @@ function createWindow({ private: isPrivate = false, profileId = 'default' } = {}
     height: 820,
     minWidth: 640,
     minHeight: 420,
-    titleBarStyle: 'hiddenInset',
+    // 'hiddenInset' (native traffic lights with our tab strip wrapped
+    // around them) is macOS-only; Chromium/Electron has no equivalent on
+    // Windows/Linux, so those platforms get the normal native title bar
+    // instead of a broken half-custom one.
+    titleBarStyle: IS_MAC ? 'hiddenInset' : undefined,
     backgroundColor: '#1e1e1e',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -228,17 +253,25 @@ function buildMenu() {
     click: () => createWindow({ profileId: p.id }),
   }));
 
+  // macOS convention is a first submenu named after the app, holding
+  // About/Settings/Quit. There's no equivalent slot on Windows/Linux, so
+  // those platforms get Settings folded into File and About into Help
+  // instead, rather than an empty/non-functional app-name menu.
   const menu = Menu.buildFromTemplate([
-    {
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: sendMenuAction('settings') },
-        { type: 'separator' },
-        { role: 'quit' },
-      ],
-    },
+    ...(IS_MAC
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: sendMenuAction('settings') },
+              { type: 'separator' },
+              { role: 'quit' },
+            ],
+          },
+        ]
+      : []),
     {
       label: 'File',
       submenu: [
@@ -248,6 +281,13 @@ function buildMenu() {
         { type: 'separator' },
         { label: 'Close Tab', click: sendMenuAction('close-tab') },
         { role: 'close' },
+        ...(IS_MAC
+          ? []
+          : [
+              { type: 'separator' },
+              { label: 'Settings...', accelerator: 'CmdOrCtrl+,', click: sendMenuAction('settings') },
+              { role: 'quit' },
+            ]),
       ],
     },
     {
@@ -307,6 +347,7 @@ function buildMenu() {
         { label: 'Print...', accelerator: 'CmdOrCtrl+P', click: sendMenuAction('print') },
       ],
     },
+    ...(IS_MAC ? [] : [{ label: 'Help', submenu: [{ role: 'about' }] }]),
   ]);
   Menu.setApplicationMenu(menu);
 }
@@ -322,6 +363,50 @@ ipcMain.handle('ad-block:set', (_e, profileId, value) => {
 });
 ipcMain.handle('ad-block:count', (_e, profileId) => storeFor(profileId).blockedCount);
 
+// ---------- Ask Gushu (Claude API) ----------
+// Uses the user's own Anthropic API key, stored locally — each request is
+// billed to whoever's key is set, so there's nothing shared/embedded here.
+
+ipcMain.handle('ask-gushu:get-key', (_e, profileId) => storeFor(profileId).settings.anthropicApiKey || '');
+ipcMain.handle('ask-gushu:set-key', (_e, profileId, key) => {
+  const store = storeFor(profileId);
+  store.settings.anthropicApiKey = key || '';
+  store.saveSettings();
+  return store.settings.anthropicApiKey;
+});
+
+ipcMain.handle('ask-gushu:send', async (_e, profileId, { messages, pageContext }) => {
+  const key = storeFor(profileId).settings.anthropicApiKey;
+  if (!key) return { error: 'No API key set. Add one in Settings → Ask Gushu.' };
+
+  const body = {
+    model: 'claude-sonnet-5',
+    max_tokens: 1024,
+    messages,
+  };
+  if (pageContext) {
+    body.system = `You're helping the user understand the web page they currently have open. Use this page content to answer when relevant. Keep answers concise.\n\nPage title: ${pageContext.title}\nPage URL: ${pageContext.url}\nPage content:\n${pageContext.text}`;
+  }
+
+  try {
+    const res = await net.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data?.error?.message || `Request failed (${res.status}).` };
+    const text = data.content?.find((block) => block.type === 'text')?.text || '';
+    return { text };
+  } catch (err) {
+    return { error: err.message || 'Request failed.' };
+  }
+});
+
 ipcMain.handle('privacy:report', (_e, profileId) => {
   const store = storeFor(profileId);
   const byDomain = Object.entries(store.blockedByDomain)
@@ -332,15 +417,41 @@ ipcMain.handle('privacy:report', (_e, profileId) => {
 
 ipcMain.handle('history:add', (_e, profileId, { url, title, favicon }) => {
   const store = storeFor(profileId);
-  store.history.push({ url, title: title || url, favicon: favicon || null, visitedAt: Date.now() });
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  store.history.push({ id, url, title: title || url, favicon: favicon || null, visitedAt: Date.now() });
   if (store.history.length > HISTORY_LIMIT) store.history = store.history.slice(store.history.length - HISTORY_LIMIT);
   store.saveHistory();
 });
 ipcMain.handle('history:list', (_e, profileId) => [...storeFor(profileId).history].reverse());
+ipcMain.handle('history:remove', (_e, profileId, id) => {
+  const store = storeFor(profileId);
+  const idx = store.history.findIndex((h) => h.id === id);
+  if (idx === -1) return null;
+  const [removed] = store.history.splice(idx, 1);
+  store.saveHistory();
+  return removed;
+});
+ipcMain.handle('history:restore', (_e, profileId, entry) => {
+  // Undo for a single removal — put it back in chronological position.
+  const store = storeFor(profileId);
+  let insertAt = store.history.findIndex((h) => h.visitedAt > entry.visitedAt);
+  if (insertAt === -1) insertAt = store.history.length;
+  store.history.splice(insertAt, 0, entry);
+  store.saveHistory();
+});
 ipcMain.handle('history:clear', (_e, profileId) => {
   const store = storeFor(profileId);
   store.history = [];
   store.saveHistory();
+});
+
+// Ephemeral "recently closed tabs" — in-memory only, per profile, never
+// written to disk (cleared on app restart, same as real browsers).
+ipcMain.handle('tabs:closed-list', (_e, profileId) => storeFor(profileId).recentlyClosed);
+ipcMain.handle('tabs:notify-closed', (_e, profileId, entry) => {
+  const store = storeFor(profileId);
+  store.recentlyClosed.unshift({ ...entry, closedAt: Date.now() });
+  if (store.recentlyClosed.length > 10) store.recentlyClosed.length = 10;
 });
 
 // Groups history by domain and ranks by visit count (ties broken by most
@@ -407,13 +518,38 @@ ipcMain.handle('downloads:open-folder', (_e, profileId, id) => {
   if (entry?.savePath) shell.showItemInFolder(entry.savePath);
 });
 
-ipcMain.handle('browsing-data:delete', async (_e, profileId) => {
+function rangeToCutoff(range) {
+  const now = Date.now();
+  if (range === 'hour') return now - 60 * 60 * 1000;
+  if (range === 'today') {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+  if (range === 'week') return now - 7 * 24 * 60 * 60 * 1000;
+  return 0; // 'all'
+}
+
+ipcMain.handle('browsing-data:delete', async (_e, profileId, options = {}) => {
+  const { range = 'all', history: clearHistoryFlag = true, cookies = true, cache = true } = options;
   const store = storeFor(profileId);
-  store.history = [];
-  store.saveHistory();
+
+  if (clearHistoryFlag) {
+    if (range === 'all') {
+      store.history = [];
+    } else {
+      const cutoff = rangeToCutoff(range);
+      store.history = store.history.filter((h) => h.visitedAt < cutoff);
+    }
+    store.saveHistory();
+  }
+
   const ses = sessionForProfile(profileId);
-  await ses.clearStorageData();
-  await ses.clearCache();
+  // Cookies/cache don't support partial time-range clearing in Electron's
+  // session API — a selected range only narrows which history entries are
+  // removed, cookies/cache are cleared in full when checked at all.
+  if (cookies) await ses.clearStorageData();
+  if (cache) await ses.clearCache();
 });
 
 ipcMain.handle('profiles:list', () => profiles);
