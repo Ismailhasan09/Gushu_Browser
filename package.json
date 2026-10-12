@@ -65,7 +65,6 @@
     },
     "linux": {
       "icon": "build/icon.png",
-      "desktopName": "gushu-browser.desktop",
       "target": [
         {
           "target": "AppImage",
