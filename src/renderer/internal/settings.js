@@ -27,9 +27,11 @@ renderAdBlock();
 // ---------- privacy stats ----------
 
 async function renderStats() {
-  const { total, byDomain } = await window.internalAPI.getPrivacyReport();
+  const { total, byDomain, today } = await window.internalAPI.getPrivacyReport();
   document.getElementById('stat-blocked').textContent = total;
   document.getElementById('stat-networks').textContent = byDomain.length;
+  document.getElementById('stat-today-count').textContent = today.count;
+  document.getElementById('stat-today-estimate').textContent = today.estimate.toFixed(2);
 }
 renderStats();
 setInterval(renderStats, 3000);

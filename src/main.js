@@ -70,7 +70,9 @@ function storeFor(profileId) {
     history: path.join(dir, 'history.json'),
     bookmarks: path.join(dir, 'bookmarks.json'),
     downloads: path.join(dir, 'downloads.json'),
+    blockedDaily: path.join(dir, 'blocked-daily.json'),
   };
+  let blockedDailySaveTimer = null;
   const store = {
     settings: readJSON(files.settings, { adBlockEnabled: true, anthropicApiKey: '' }),
     history: readJSON(files.history, []),
@@ -78,6 +80,12 @@ function storeFor(profileId) {
     downloads: readJSON(files.downloads, []),
     blockedCount: 0,
     blockedByDomain: {},
+    // Keyed by local date ("YYYY-MM-DD") so the daily-report script can
+    // read today's count directly, without Electron, even with the app
+    // closed. Unlike blockedCount/blockedByDomain above (session-only),
+    // this is written to disk — but debounced, since ad-block hits can
+    // fire hundreds of times per page load.
+    blockedDaily: readJSON(files.blockedDaily, {}),
     // Ephemeral, session-only — not written to disk, cleared on restart
     // (same as real browsers' "recently closed tabs").
     recentlyClosed: [],
@@ -93,9 +101,25 @@ function storeFor(profileId) {
     saveDownloads() {
       writeJSON(files.downloads, store.downloads);
     },
+    saveBlockedDaily() {
+      writeJSON(files.blockedDaily, store.blockedDaily);
+    },
+    recordBlockedToday() {
+      const today = todayKey();
+      store.blockedDaily[today] = (store.blockedDaily[today] || 0) + 1;
+      if (blockedDailySaveTimer) return;
+      blockedDailySaveTimer = setTimeout(() => {
+        blockedDailySaveTimer = null;
+        store.saveBlockedDaily();
+      }, 5000);
+    },
   };
   profileStores.set(id, store);
   return store;
+}
+
+function todayKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function sessionForProfile(profileId) {
@@ -151,6 +175,7 @@ function registerAdBlock(ses, profileId) {
     if (matched) {
       store.blockedCount += 1;
       store.blockedByDomain[matched] = (store.blockedByDomain[matched] || 0) + 1;
+      store.recordBlockedToday();
       callback({ cancel: true });
     } else {
       callback({ cancel: false });
@@ -407,12 +432,18 @@ ipcMain.handle('ask-gushu:send', async (_e, profileId, { messages, pageContext }
   }
 });
 
+// A rough estimate only — there's no way to know what any real ad
+// actually pays. Roughly mid-range for typical display-ad CPMs
+// ($1-$3 per 1000 views). Keep this in sync with scripts/daily-ad-report.js.
+const RATE_PER_AD = 0.002;
+
 ipcMain.handle('privacy:report', (_e, profileId) => {
   const store = storeFor(profileId);
   const byDomain = Object.entries(store.blockedByDomain)
     .map(([domain, count]) => ({ domain, count }))
     .sort((a, b) => b.count - a.count);
-  return { total: store.blockedCount, byDomain };
+  const todayCount = store.blockedDaily[todayKey()] || 0;
+  return { total: store.blockedCount, byDomain, today: { count: todayCount, estimate: todayCount * RATE_PER_AD } };
 });
 
 ipcMain.handle('history:add', (_e, profileId, { url, title, favicon }) => {
@@ -698,6 +729,13 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// Flushes the debounced blocked-ad-count writes immediately, so the last
+// few seconds before quitting aren't lost (the daily-report script reads
+// this file directly, with the app closed).
+app.on('before-quit', () => {
+  for (const store of profileStores.values()) store.saveBlockedDaily();
 });
 
 app.on('activate', () => {
